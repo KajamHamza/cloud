@@ -21,7 +21,7 @@ Run these commands first (PowerShell):
 # Core variables
 $RESOURCE_GROUP = "viral-predictor-rg"
 $LOCATION = "eastus"  # Cheapest region
-$STORAGE_ACCOUNT = "viralpredictstorage$(Get-Random -Max 9999)"
+$STORAGE_ACCOUNT = "viralpredictstorage7767"
 $SQL_SERVER = "viral-sql-server12"
 $SQL_DB = "viral_posts_db"
 $ML_WORKSPACE = "viral-ml-workspace"
