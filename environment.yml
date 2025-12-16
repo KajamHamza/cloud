@@ -1,0 +1,14 @@
+name: viral-env
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - torch
+      - transformers
+      - xgboost
+      - scikit-learn
+      - pandas
+      - numpy
+      - azure-storage-blob

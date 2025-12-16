@@ -1,0 +1,17 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+command: |
+  python process_twitter_data.py
+  python extract_features_twitter.py
+code: ./src
+environment: azureml:viral-env:1
+compute: gpu-cluster
+experiment_name: data_processing
+display_name: process-twitter-data
+inputs:
+  raw_data:
+    type: uri_file
+    path: azureml://datastores/workspaceblobstore/paths/raw-data/tweets.csv
+outputs:
+  processed_data:
+    type: uri_folder
+    path: azureml://datastores/workspaceblobstore/paths/processed-data

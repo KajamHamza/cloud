@@ -1,0 +1,60 @@
+{
+    "num_posts": 20000,
+    "topics": [
+        "technology",
+        "programming",
+        "artificial_intelligence",
+        "gaming",
+        "funny",
+        "news",
+        "science",
+        "movies",
+        "music",
+        "sports",
+        "food",
+        "travel",
+        "photography",
+        "politics",
+        "health"
+    ],
+    "sentiment_distribution": {
+        "positive": 0.4,
+        "neutral": 0.4,
+        "negative": 0.2
+    },
+    "post_types": {
+        "text": 0.6,
+        "link": 0.3,
+        "image": 0.1
+    },
+    "virality_threshold_percentile": 90,
+    "engagement_params": {
+        "min_score": 10,
+        "max_score": 100000,
+        "score_distribution": "power_law",
+        "comments_to_score_ratio": 0.15
+    },
+    "text_generation": {
+        "title_min_words": 5,
+        "title_max_words": 20,
+        "body_min_words": 50,
+        "body_max_words": 500,
+        "use_realistic_templates": true
+    },
+    "temporal_patterns": {
+        "peak_hours": [
+            12,
+            13,
+            18,
+            19,
+            20
+        ],
+        "peak_days": [
+            1,
+            2,
+            3,
+            4
+        ],
+        "weekend_boost": 1.2
+    }
+}
