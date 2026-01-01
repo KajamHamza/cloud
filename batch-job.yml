@@ -1,0 +1,26 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+code: ./src
+command: >-
+  python batch_predict.py 
+  --input_data ${{inputs.input_data}} 
+  --model_dir ${{inputs.model_dir}} 
+  --output_dir ${{outputs.prediction_output}}
+environment: azureml:viral-env:3
+compute: azureml:gpu-cluster
+display_name: viral-batch-prediction
+experiment_name: viral-prediction-batch
+description: Batch inference using CPU cluster
+
+inputs:
+  input_data:
+    type: uri_file
+    path: azureml://datastores/viralstorage/paths/tweets.csv # Using original file for test, ideally upload new file
+  model_dir:
+    type: uri_folder
+    # Point directly to the folder containing the model we verified earlier
+    path: azureml://datastores/viralstorage/paths/models/bert_multitask_20251221_174041
+
+outputs:
+  prediction_output:
+    type: uri_folder
+    path: azureml://datastores/viralstorage_processed/paths/predictions

@@ -1,0 +1,7 @@
+$schema: https://azuremlschemas.azureedge.net/latest/azureBlob.schema.json
+name: viralstorage
+type: azure_blob
+account_name: viralpredictstorage7767
+container_name: raw-data
+credentials:
+  account_key: <ACCOUNT_KEY>

@@ -1,0 +1,76 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Check model performance weekly
+    - cron: "0 2 * * 0" # Sunday 2 AM
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov
+          pip install torch transformers scikit-learn pandas numpy
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ --cov=src --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+
+  model-validation:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check latest model metrics
+        run: |
+          az ml model list --resource-group viral-predictor-rg --workspace-name viral-ml-workspace
+
+      - name: Validate model performance
+        run: |
+          python scripts/validate_model_performance.py
+
+  deploy:
+    needs: [test, model-validation]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check if VM deployment needed
+        run: |
+          echo "Deployment to VM would happen here"
+          echo "Skipped for now - VM not running to save costs"

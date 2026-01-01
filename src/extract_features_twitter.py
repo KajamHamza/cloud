@@ -79,6 +79,23 @@ class TwitterNLPFeatureExtractor:
         print("=" * 60)
         print("🧠 Twitter NLP Feature Extraction")
         print("=" * 60)
+        
+        # Check for Azure ML output path - try multiple possible variable names
+        azure_output = (os.environ.get('AZURE_ML_OUTPUT_processed_data') or 
+                        os.environ.get('AZURE_ML_OUTPUT_PROCESSED_DATA'))
+        
+        # Debug: Print all Azure-related environment variables
+        logger.info("Azure ML Environment Variables:")
+        for key, value in os.environ.items():
+            if 'AZURE' in key.upper() or 'OUTPUT' in key.upper():
+                logger.info(f"  {key} = {value}")
+        
+        if azure_output:
+            output_dir = azure_output
+            logger.info(f"✅ Using Azure ML output path: {output_dir}")
+        else:
+            logger.info(f"ℹ️ Using local output path: {output_dir}")
+        
         print(f"📁 Using: {Path(input_file).name}\n")
         
         # Load processed Twitter data
@@ -175,12 +192,22 @@ class TwitterNLPFeatureExtractor:
 
 def main():
     """Main execution function."""
+    # Check for Azure ML input path
+    azure_input = os.environ.get('AZURE_ML_OUTPUT_processed_data')
+    
+    if azure_input:
+        # Running on Azure ML - use the output from previous script
+        data_dir = Path(azure_input)
+        logger.info(f"Running on Azure ML - loading from: {data_dir}")
+    else:
+        # Running locally
+        data_dir = Path("data/processed")
+    
     # Find most recent processed Twitter file
-    data_dir = Path("data/processed")
     csv_files = list(data_dir.glob("twitter_processed_*.csv"))
     
     if not csv_files:
-        print("❌ No processed Twitter files found in data/processed/")
+        print(f"❌ No processed Twitter files found in {data_dir}")
         print("Please run: python src/process_twitter_data.py first")
         return
     

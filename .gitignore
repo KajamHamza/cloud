@@ -1,5 +1,3 @@
-# Environment variables
-.env
 
 # Python
 __pycache__/
@@ -7,27 +5,23 @@ __pycache__/
 *$py.class
 *.so
 .Python
-venv_gpu/
 env/
 ENV/
+venv/
+.venv/
 
-# Data files
+# Data files (IGNORE THESE LARGE FILES)
 data/synthetic/*.csv
 data/processed/*.csv
-*.pkl
-*.joblib
+data/raw/*.csv
+*.csv
 
-# Models
-models/*.pkl
-models/*.pt
-models/*.h5
-models/
+# Models (Tracked by LFS, but ignore untracked ones if needed, though usually we want LFS to catch them)
+# Keeping models visible so LFS works
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # OS
 .DS_Store

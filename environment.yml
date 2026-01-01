@@ -12,3 +12,10 @@ dependencies:
       - pandas
       - numpy
       - azure-storage-blob
+      - textblob
+      - sentence-transformers
+      - tqdm
+      - mlflow
+      - azureml-mlflow
+      - pyodbc # Added for SQL logging capability in jobs
+

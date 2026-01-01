@@ -1,0 +1,14 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+code: ./src
+command: python monitor_drift.py
+environment: azureml:viral-env:3
+compute: azureml:gpu-cluster
+display_name: data-drift-monitor
+experiment_name: production-monitoring
+description: Checks Azure SQL logs for data drift
+inputs:
+  dummy: # Sometimes needed to trigger mount, but script reads from SQL
+    type: uri_file
+    path: azureml://datastores/workspaceblobstore/paths/raw-data/tweets.csv
+# Environment variables for SQL Connection
+# USER MUST SET SQL_PASSWORD in Environment Variable or Workspace Secret

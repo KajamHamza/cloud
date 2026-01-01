@@ -2,14 +2,15 @@ $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 command: >
   python train_bert_multitask.py
 code: ./src
-environment: azureml:viral-env:1
+environment: azureml:viral-env:2
 compute: gpu-cluster
 experiment_name: viral_prediction
 display_name: bert-multitask-training
 inputs:
   processed_data:
     type: uri_folder
-    path: azureml://datastores/workspaceblobstore/paths/processed-data
+    path: azureml://datastores/viralstorage_processed/paths/
 outputs:
   model_output:
     type: uri_folder
+    path: azureml://datastores/viralstorage/paths/models

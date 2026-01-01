@@ -33,6 +33,31 @@ def process_twitter_data(input_file: str = "tweets.csv", output_dir: str = "data
     print("🐦 Twitter Data Processing")
     print("=" * 60)
     
+    # Check for Azure ML paths - try multiple possible variable names
+    azure_input = (os.environ.get('AZURE_ML_INPUT_raw_data') or 
+                   os.environ.get('AZURE_ML_INPUT_RAW_DATA'))
+    azure_output = (os.environ.get('AZURE_ML_OUTPUT_processed_data') or 
+                    os.environ.get('AZURE_ML_OUTPUT_PROCESSED_DATA'))
+    
+    # Debug: Print all Azure-related environment variables
+    logger.info("Azure ML Environment Variables:")
+    for key, value in os.environ.items():
+        if 'AZURE' in key.upper() or 'OUTPUT' in key.upper():
+            logger.info(f"  {key} = {value}")
+    
+    if azure_input:
+        # Running on Azure ML
+        input_file = Path(azure_input) / "tweets.csv"
+        logger.info(f"✅ Running on Azure ML - input from: {input_file}")
+    else:
+        logger.info(f"ℹ️ Running locally - using: {input_file}")
+    
+    if azure_output:
+        output_dir = azure_output
+        logger.info(f"✅ Running on Azure ML - output to: {output_dir}")
+    else:
+        logger.info(f"ℹ️ Running locally - output to: {output_dir}")
+    
     # Load data
     logger.info(f"Loading Twitter data from {input_file}...")
     df = pd.read_csv(input_file)

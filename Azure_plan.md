@@ -210,7 +210,10 @@ az ml compute create `
   --min-instances 0 `
   --max-instances 1 `
   --idle-time-before-scale-down 1800
+  
+# to keep using your storage account, you need to register it as a datastore first
 
+az ml datastore create --file datastore.yml --resource-group $RESOURCE_GROUP --workspace-name $ML_WORKSPACE
 # Submit processing job
 az ml job create --file process-data-job.yml -g $RESOURCE_GROUP -w $ML_WORKSPACE
 
@@ -230,10 +233,10 @@ az ml job show -n JOB_NAME -g $RESOURCE_GROUP -w $ML_WORKSPACE
 **Time:** ~10 minutes (GPU-accelerated)  
 **Cost:** ~$0.15 (one-time)
 
-- [ ] GPU compute created
-- [ ] Processing job submitted
-- [ ] Processing completed (~10 mins)
-- [ ] Processed data in Blob Storage
+- [x] GPU compute created
+- [x] Processing job submitted
+- [x] Processing completed (~10 mins)
+- [x] Processed data in Blob Storage
 
 ---
 
@@ -265,11 +268,12 @@ dependencies:
 # Create environment
 az ml environment create `
   --name viral-env `
+  --conda-file environment.yml `
+  --image mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04 `
   --resource-group $RESOURCE_GROUP `
-  --workspace-name $ML_WORKSPACE `
-  --file environment.yml
+  --workspace-name $ML_WORKSPACE
 ```
-- [ ] Environment created
+- [x] Environment created
 
 ---
 
@@ -324,8 +328,8 @@ az ml job list -g $RESOURCE_GROUP -w $ML_WORKSPACE --output table
 # Stream logs (replace JOB_NAME)
 az ml job stream -n JOB_NAME -g $RESOURCE_GROUP -w $ML_WORKSPACE
 ```
-- [ ] Training job submitted
-- [ ] Training completed (~15-20 mins)
+- [x] Training job submitted
+- [x] Training completed (~15-20 mins)
 
 **Phase 2 Cost:**
 - GPU processing: $0.15 (one-time)
@@ -347,112 +351,110 @@ az ml model create `
   --resource-group $RESOURCE_GROUP `
   --workspace-name $ML_WORKSPACE
 ```
-- [ ] Model registered
+- [x] Model registered
 
 ---
 
-### Step 12: Create Scoring Script
-Create `score.py`:
-```python
-import json
-import torch
-from transformers import DistilBertTokenizer, DistilBertModel
-import torch.nn as nn
+### Step 12: Download Model and Create Flask API
 
-def init():
-    global model, tokenizer, device
-    
-    # Load model
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    tokenizer = DistilBertTokenizer.from_pretrained('./model/bert')
-    
-    # Load custom model architecture
-    from model_arch import MultiTaskBERT
-    model = MultiTaskBERT()
-    model.load_state_dict(torch.load('./model/task_heads.pt'))
-    model.to(device)
-    model.eval()
+**⚠️ Note:** Using Azure App Service instead of managed online endpoints due to ACI quota limitations.
 
-def run(raw_data):
-    data = json.loads(raw_data)
-    text = data['text']
-    
-    # Tokenize
-    encoding = tokenizer(text, max_length=128, padding='max_length', 
-                        truncation=True, return_tensors='pt')
-    
-    input_ids = encoding['input_ids'].to(device)
-    attention_mask = encoding['attention_mask'].to(device)
-    
-    # Predict
-    with torch.no_grad():
-        class_logits, reg_output = model(input_ids, attention_mask)
-        prediction = torch.argmax(class_logits, dim=1).item()
-        viral_prob = torch.softmax(class_logits, dim=1)[0][1].item()
-        engagement = torch.expm1(reg_output).item()
-    
-    return json.dumps({
-        'is_viral': bool(prediction),
-        'viral_probability': float(viral_prob),
-        'predicted_engagement': int(engagement)
-    })
-```
-- [ ] Scoring script created
-
----
-
-### Step 13: Deploy Model Endpoint
 ```powershell
-# Create endpoint
-az ml online-endpoint create `
-  --name viral-prediction-endpoint `
-  --resource-group $RESOURCE_GROUP `
-  --workspace-name $ML_WORKSPACE
-
-# Deploy model
-az ml online-deployment create `
-  --name blue `
-  --endpoint-name viral-prediction-endpoint `
-  --model bert-viral-classifier:1 `
-  --instance-type Standard_DS2_v2 `
-  --instance-count 1 `
-  --resource-group $RESOURCE_GROUP `
-  --workspace-name $ML_WORKSPACE
-
-# Set traffic to 100%
-az ml online-endpoint update `
-  --name viral-prediction-endpoint `
-  --traffic "blue=100" `
+# Download model from Azure ML
+az ml model download `
+  --name bert-viral-classifier `
+  --version 1 `
+  --download-path ./app-service/model `
   --resource-group $RESOURCE_GROUP `
   --workspace-name $ML_WORKSPACE
 ```
-- [ ] Endpoint created
-- [ ] Model deployed
+
+Flask API already created in `app-service/` folder:
+- `app.py` - Flask API with prediction endpoint
+- `requirements.txt` - Dependencies
+- `DEPLOYMENT.md` - Full deployment guide
+
+- [ ] Model downloaded
+- [ ] Flask API files created
 
 ---
 
-### Step 14: Test Endpoint
+### Step 13: Deploy to Azure App Service
+
 ```powershell
-# Get API key
-az ml online-endpoint get-credentials `
-  --name viral-prediction-endpoint `
+# Create App Service plan (B1 tier - $13/month)
+az appservice plan create `
+  --name viral-api-plan `
   --resource-group $RESOURCE_GROUP `
-  --workspace-name $ML_WORKSPACE
+  --location $LOCATION `
+  --sku B1 `
+  --is-linux
+
+# Create web app
+$APP_NAME = "viral-predictor-api-$((Get-Random -Max 9999))"
+az webapp create `
+  --name $APP_NAME `
+  --resource-group $RESOURCE_GROUP `
+  --plan viral-api-plan `
+  --runtime "PYTHON:3.11"
+
+# Configure startup command
+az webapp config set `
+  --resource-group $RESOURCE_GROUP `
+  --name $APP_NAME `
+  --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 app:app"
+
+# Package and deploy
+cd app-service
+Compress-Archive -Path * -DestinationPath ../api.zip -Force
+cd ..
+
+az webapp deployment source config-zip `
+  --resource-group $RESOURCE_GROUP `
+  --name $APP_NAME `
+  --src api.zip
+```
+
+- [ ] App Service plan created
+- [ ] Web app created
+- [ ] Application deployed
+
+**Deployment time:** ~5-10 minutes  
+**Cost:** ~$13/month (B1 tier)
+
+---
+
+### Step 14: Test API Endpoint
+
+```powershell
+# Get app URL
+$APP_URL = az webapp show `
+  --resource-group $RESOURCE_GROUP `
+  --name $APP_NAME `
+  --query defaultHostName -o tsv
+
+# Test health check
+curl "https://$APP_URL/"
 
 # Test prediction
-$testJson = @"
-{
-  "text": "Breaking: Major AI breakthrough announced! 🚀"
-}
-"@
-
-az ml online-endpoint invoke `
-  --name viral-prediction-endpoint `
-  --request-file test.json `
-  --resource-group $RESOURCE_GROUP `
-  --workspace-name $ML_WORKSPACE
+curl -X POST "https://$APP_URL/predict" `
+  -H "Content-Type: application/json" `
+  -d '{\"text\": \"Breaking: Major AI breakthrough announced! 🚀\"}'
 ```
-- [ ] Endpoint tested successfully
+
+**Expected response:**
+```json
+{
+  "is_viral": true,
+  "viral_probability": 0.8521,
+  "predicted_engagement": 1234,
+  "model_version": "v1.0"
+}
+```
+
+- [ ] Health check successful
+- [ ] Prediction endpoint working
+
 
 **Cost so far:** $85/month (Storage + SQL + ML Endpoint)
 
@@ -728,8 +730,409 @@ az ad sp create-for-rbac `
 
 ---
 
+## 🤖 **PHASE 8: MLOps Enhancements (Day 8)** 
+
+### Step 22: Add MLflow Experiment Tracking
+
+**Update training script to track experiments** (FREE):
+
+Add to `src/train_bert_multitask.py`:
+```python
+import mlflow
+import mlflow.pytorch
+
+def main():
+    # Start MLflow run
+    mlflow.set_tracking_uri("azureml://")
+    mlflow.set_experiment("viral_prediction")
+    
+    with mlflow.start_run(run_name="bert_multitask_training"):
+        # Log parameters
+        mlflow.log_params({
+            "model": "distilbert-base-uncased",
+            "epochs": 3,
+            "learning_rate": 2e-5,
+            "batch_size": 16
+        })
+        
+        # ... existing training code ...
+        
+        # Log metrics after evaluation
+        mlflow.log_metrics({
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "rmse": rmse,
+            "r2_score": r2
+        })
+        
+        # Log model
+        mlflow.pytorch.log_model(model, "model")
+        
+        print(f"✅ MLflow tracking: {mlflow.active_run().info.run_id}")
+```
+
+**View experiments in Azure ML Studio:**
+- Go to portal.azure.com → ML Workspace → Experiments
+- Compare runs, visualize metrics
+
+- [ ] MLflow tracking added
+- [ ] Experiments visible in Azure ML
+
+**Cost:** $0 (included in ML workspace)
+
+---
+
+### Step 23: Setup Data Drift Detection
+
+**Monitor data quality changes** (FREE):
+
+Create `monitoring/data_drift.py`:
+```python
+from azure.ai.ml import MLClient
+from azure.ai.ml.entities import DataDriftMonitor
+from azure.identity import DefaultAzureCredential
+
+# Initialize client
+ml_client = MLClient.from_config(DefaultAzureCredential())
+
+# Create data drift monitor
+monitor = DataDriftMonitor(
+    name="viral-data-drift-monitor",
+    compute="gpu-cluster",
+    monitoring_signals={
+        "data_drift_signal": {
+            "type": "data_drift",
+            "production_data": "azureml:viralstorage_processed:1",
+            "reference_data": "azureml:viralstorage_processed:1",
+            "features": ["text_length", "word_count", "sentiment_polarity"],
+            "alert_enabled": True
+        }
+    },
+    schedule={
+        "frequency": "week",
+        "interval": 1
+    }
+)
+
+# Create monitor
+ml_client.schedules.create_or_update(monitor)
+print("✅ Data drift monitoring enabled")
+```
+
+```powershell
+# Run setup
+python monitoring/data_drift.py
+```
+
+- [ ] Data drift monitor created
+- [ ] Weekly drift checks enabled
+
+**Cost:** $0 (uses existing compute, runs 5 min/week)
+
+---
+
+### Step 24: Automated Retraining Pipeline
+
+**Schedule weekly model retraining** (~$2/month):
+
+Create `pipelines/retrain_pipeline.py`:
+```python
+from azure.ai.ml import dsl, Input, Output
+from azure.ai.ml.entities import PipelineJob
+
+@dsl.pipeline(name="automated_retraining")
+def retrain_pipeline():
+    # Step 1: Process new data
+    process_step = process_data_component(
+        raw_data=Input(path="azureml://datastores/viralstorage/paths/tweets.csv")
+    )
+    
+    # Step 2: Train model
+    train_step = train_model_component(
+        processed_data=process_step.outputs.processed_data
+    )
+    
+    # Step 3: Evaluate model
+    eval_step = evaluate_model_component(
+        model=train_step.outputs.model,
+        test_data=process_step.outputs.test_data
+    )
+    
+    # Step 4: Deploy if better
+    deploy_step = conditional_deploy_component(
+        new_model=train_step.outputs.model,
+        metrics=eval_step.outputs.metrics,
+        threshold=0.85  # Deploy if accuracy > 85%
+    )
+    
+    return {
+        "trained_model": train_step.outputs.model,
+        "metrics": eval_step.outputs.metrics
+    }
+
+# Create pipeline job
+pipeline = retrain_pipeline()
+
+# Schedule weekly execution
+from azure.ai.ml.entities import CronSchedule
+
+schedule = CronSchedule(
+    expression="0 2 * * 0",  # Sunday 2 AM
+    name="weekly_retrain"
+)
+
+ml_client.schedules.create_or_update(
+    schedule=schedule,
+    pipeline_job=pipeline
+)
+```
+
+- [ ] Retraining pipeline created
+- [ ] Weekly schedule configured
+
+**Cost:** ~$2/month (30 min CPU time/week)
+
+---
+
+### Step 25: Model Performance Monitoring
+
+**Track prediction accuracy in SQL** (FREE):
+
+Update SQL schema:
+```sql
+-- Add performance tracking columns
+ALTER TABLE predictions 
+ADD model_version VARCHAR(50) DEFAULT 'v1.0',
+    prediction_timestamp DATETIME DEFAULT GETDATE(),
+    feedback_correct BIT NULL,
+    feedback_timestamp DATETIME NULL;
+
+-- Create performance view
+CREATE VIEW model_performance AS
+SELECT 
+    model_version,
+    DATE(prediction_timestamp) as prediction_date,
+    COUNT(*) as total_predictions,
+    SUM(CASE WHEN feedback_correct = 1 THEN 1 ELSE 0 END) as correct_predictions,
+    AVG(CASE WHEN feedback_correct IS NOT NULL 
+        THEN CAST(feedback_correct AS FLOAT) 
+        ELSE NULL END) as accuracy
+FROM predictions
+WHERE feedback_correct IS NOT NULL
+GROUP BY model_version, DATE(prediction_timestamp);
+
+-- Create monitoring alert trigger
+CREATE TRIGGER alert_low_accuracy
+ON predictions
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @recent_accuracy FLOAT;
+    
+    SELECT @recent_accuracy = AVG(CAST(feedback_correct AS FLOAT))
+    FROM predictions
+    WHERE feedback_timestamp > DATEADD(day, -7, GETDATE())
+    AND feedback_correct IS NOT NULL;
+    
+    IF @recent_accuracy < 0.80
+    BEGIN
+        -- Log alert (implement notification if needed)
+        PRINT 'WARNING: Model accuracy below 80%';
+    END
+END;
+```
+
+Update `score.py` to log predictions:
+```python
+def run(raw_data):
+    # ... existing prediction code ...
+    
+    # Log to SQL
+    import pyodbc
+    conn = pyodbc.connect(connection_string)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT INTO predictions 
+        (tweet_text, is_viral, viral_probability, predicted_engagement, model_version)
+        VALUES (?, ?, ?, ?, ?)
+    """, (text, prediction, viral_prob, engagement, "v1.0"))
+    
+    conn.commit()
+    return result
+```
+
+- [ ] Performance tracking schema created
+- [ ] Prediction logging enabled
+- [ ] Performance dashboard view created
+
+**Cost:** $0 (uses existing SQL database)
+
+---
+
+### Step 26: Enhanced GitHub Actions with Testing
+
+**Add automated testing** (FREE on GitHub):
+
+Update `.github/workflows/deploy.yml`:
+```yaml
+name: Deploy to Azure with Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov
+          pip install -r requirements.txt
+      
+      - name: Run unit tests
+        run: pytest tests/ --cov=src --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Deploy Streamlit App
+        run: |
+          zip -r app.zip app.py .streamlit requirements.txt
+          az webapp deployment source config-zip \
+            --resource-group viral-predictor-rg \
+            --name ${{ secrets.APP_NAME }} \
+            --src app.zip
+      
+      - name: Run integration tests
+        run: |
+          python tests/test_endpoint.py
+
+  retrain-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check if retraining needed
+        run: |
+          python monitoring/check_performance.py
+          # Trigger retraining pipeline if accuracy drops
+```
+
+Create `tests/test_model.py`:
+```python
+import pytest
+from src.train_bert_multitask import MultiTaskBERT, MultiTaskBERTTrainer
+
+def test_model_initialization():
+    """Test model can be initialized"""
+    model = MultiTaskBERT()
+    assert model is not None
+
+def test_model_forward_pass():
+    """Test model forward pass"""
+    import torch
+    model = MultiTaskBERT()
+    
+    # Dummy input
+    input_ids = torch.randint(0, 1000, (1, 128))
+    attention_mask = torch.ones((1, 128))
+    
+    class_logits, reg_output = model(input_ids, attention_mask)
+    
+    assert class_logits.shape == (1, 2)
+    assert reg_output.shape == (1,)
+
+def test_trainer_data_preparation():
+    """Test data loading"""
+    import pandas as pd
+    
+    # Mock data
+    df = pd.DataFrame({
+        'text': ['test tweet'] * 100,
+        'is_viral': [0, 1] * 50,
+        'total_engagement': range(100)
+    })
+    
+    trainer = MultiTaskBERTTrainer()
+    train_loader, test_loader = trainer.prepare_data(df, batch_size=16)
+    
+    assert len(train_loader) > 0
+    assert len(test_loader) > 0
+```
+
+- [ ] Unit tests created
+- [ ] GitHub Actions testing enabled
+- [ ] Code coverage tracking setup
+
+**Cost:** $0 (GitHub Actions free tier)
+
+---
+
+### Step 27: MLOps Dashboard
+
+**Create monitoring dashboard** (Uses existing Power BI):
+
+Add to Power BI dashboard:
+
+1. **Model Performance Tile**:
+   - Data source: SQL `model_performance` view
+   - Visual: Line chart of accuracy over time
+   - Alert: Red if accuracy < 80%
+
+2. **Data Drift Tile**:
+   - Data source: Azure ML data drift metrics
+   - Visual: Gauge showing drift percentage
+   - Alert: Warning if drift > 15%
+
+3. **Pipeline Health Tile**:
+   - Data source: Azure ML pipeline runs
+   - Visual: Success/Failure count
+   - Alert: Red if last 3 runs failed
+
+4. **Prediction Volume Tile**:
+   - Data source: SQL predictions table
+   - Visual: Daily prediction count
+   - Trend: 7-day moving average
+
+- [ ] MLOps dashboard created
+- [ ] Monitoring tiles configured
+- [ ] Alerts enabled
+
+**Cost:** $0 (uses existing Power BI capacity)
+
+---
+
 ## ✅ **Final Verification Checklist**
 
+**Core Infrastructure:**
 - [ ] tweets.csv uploaded to Blob Storage
 - [ ] SQL Database tables created
 - [ ] ML model trained successfully (F1: 59.3%)
@@ -740,6 +1143,14 @@ az ad sp create-for-rbac `
 - [ ] Monitoring active
 - [ ] CI/CD pipeline working
 
+**MLOps Components:**
+- [ ] MLflow experiment tracking enabled
+- [ ] Data drift monitoring configured
+- [ ] Automated retraining pipeline scheduled
+- [ ] Model performance tracking in SQL
+- [ ] GitHub Actions tests passing
+- [ ] MLOps dashboard tiles configured
+
 ---
 
 ## 💰 **Final Cost Summary**
@@ -747,22 +1158,28 @@ az ad sp create-for-rbac `
 | Service | Monthly Cost | Notes |
 |---------|--------------|-------|
 | Blob Storage | $5 | 100GB data |
-| Azure SQL (Basic) | $5 | Processed predictions |
-| ML Endpoint (DS2_v2) | $35 | REST API |
+| Azure SQL (Basic) | $5 | Processed predictions + MLOps metrics |
+| **App Service (B1)** | **$13** | **Flask API (replaced ML Endpoint)** |
 | App Service (B1) | $15 | Streamlit app |
-| Power BI (A1) | $10 | Dashboard |
+| Power BI (A1) | $10 | Dashboard + MLOps monitoring |
 | Key Vault | $3 | Secrets |
 | Application Insights | $0 | Free tier |
-| **Monthly Total** | **$73** | |
+| **MLOps Components:** | | |
+| MLflow Tracking | $0 | Included in ML workspace |
+| Data Drift Detection | $0 | <5 min/week on existing compute |
+| Automated Retraining | $2 | 30 min CPU/week |
+| Performance Monitoring | $0 | Uses existing SQL |
+| GitHub Actions Testing | $0 | Free tier (2000 min/month) |
+| **Monthly Total** | **$53** | |
 | | | |
 | **One-Time Costs:** | | |
 | GPU Processing | $0.15 | Data processing (~10 mins) |
 | GPU Training | $0.40 | BERT training (~15 mins) |
 | **One-Time Total** | **$0.55** | |
 | | | |
-| **Month 1 Grand Total** | **$73.55** | **$126 under budget!** ✅ |
+| **Month 1 Grand Total** | **$53.55** | **$146 under budget!** ✅ |
 
-**Cost per month after setup:** Only $73/month
+**Cost per month after setup:** Only $53/month (with full MLOps capabilities!)
 
 ---
 

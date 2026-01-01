@@ -31,6 +31,9 @@ from sklearn.metrics import (
 )
 from tqdm import tqdm
 
+import mlflow
+import mlflow.pytorch
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -293,7 +296,14 @@ class MultiTaskBERTTrainer:
     
     def save_model(self, output_dir="models"):
         """Save the trained model."""
-        output_dir = Path(output_dir)
+        # Check for Azure ML output path
+        azure_output = os.environ.get('AZURE_ML_OUTPUT_model_output')
+        if azure_output:
+            logger.info(f"Using Azure ML output path: {azure_output}")
+            output_dir = Path(azure_output)
+        else:
+            output_dir = Path(output_dir)
+        
         output_dir.mkdir(parents=True, exist_ok=True)
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -352,22 +362,40 @@ def main():
     print("🤖 Multi-Task BERT Training (Classification + Regression)")
     print("=" * 60)
     
+    # Initialize MLflow
+    mlflow.set_tracking_uri("azureml://")
+    mlflow.set_experiment("viral_prediction")
+    
+    # Check for Azure ML input (takes precedence over local)
+    azure_input = os.environ.get('AZURE_ML_INPUT_processed_data')
+    
+    if azure_input:
+        # Running on Azure ML - load from Azure input path
+        logger.info(f"Running on Azure ML - loading data from: {azure_input}")
+        data_dir = Path(azure_input)
+        data_source = "Azure ML"
+    else:
+        # Running locally - use local data directory
+        logger.info("Running locally - loading data from local directory")
+        data_dir = Path("data/processed")
+        data_source = "Local"
+    
     # Find most recent features file
-    data_dir = Path("data/processed")
     twitter_files = list(data_dir.glob("twitter_features_*.csv"))
     synthetic_files = list(data_dir.glob("*_features.csv"))
     
     if twitter_files:
         input_file = max(twitter_files, key=lambda f: f.stat().st_mtime)
-        data_source = "Twitter"
+        file_source = "Twitter"
     elif synthetic_files:
         input_file = max(synthetic_files, key=lambda f: f.stat().st_mtime)
-        data_source = "Synthetic"
+        file_source = "Synthetic"
     else:
-        print("❌ No feature files found")
+        print(f"❌ No feature files found in {data_dir}")
         return
     
-    print(f"📁 Using {data_source} data: {input_file.name}\n")
+    print(f"📁 Data Source: {data_source}")
+    print(f"📊 Using {file_source} data: {input_file.name}\n")
     
     # Load data
     logger.info("Loading dataset...")
@@ -380,14 +408,58 @@ def main():
     else:
         print("⚠️  No GPU - training will be slower\n")
     
-    # Train
-    trainer = MultiTaskBERTTrainer()
-    train_loader, test_loader = trainer.prepare_data(df, batch_size=16)
-    trainer.train(train_loader, test_loader, epochs=3)
-    
-    # Save
-    timestamp = trainer.save_model()
-    trainer.print_summary()
+    # Start MLflow run
+    with mlflow.start_run(run_name=f"bert_multitask_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+        # Log parameters
+        mlflow.log_params({
+            "model": "distilbert-base-uncased",
+            "epochs": 3,
+            "batch_size": 16,
+            "learning_rate": 2e-5,
+            "max_length": 128,
+            "data_source": data_source,
+            "file_source": file_source
+        })
+        
+        # Train
+        trainer = MultiTaskBERTTrainer()
+        train_loader, test_loader = trainer.prepare_data(df, batch_size=16)
+        trainer.train(train_loader, test_loader, epochs=3)
+        
+        # Log metrics after training
+        if trainer.metrics:
+            # Classification metrics
+            if 'classification' in trainer.metrics:
+                mlflow.log_metrics({
+                    "accuracy": trainer.metrics['classification']['accuracy'],
+                    "precision": trainer.metrics['classification']['precision'],
+                    "recall": trainer.metrics['classification']['recall'],
+                    "f1_score": trainer.metrics['classification']['f1']
+                })
+            
+            # Regression metrics
+            if 'regression' in trainer.metrics:
+                mlflow.log_metrics({
+                    "rmse": trainer.metrics['regression']['rmse'],
+                    "mae": trainer.metrics['regression']['mae'],
+                    "r2_score": trainer.metrics['regression']['r2_score']
+                })
+        
+        # Save model (Azure ML will use output path automatically)
+        timestamp = trainer.save_model()
+        
+        # Log model to MLflow
+        try:
+            mlflow.pytorch.log_model(trainer.model, "model")
+            logger.info("✅ Model logged to MLflow")
+        except Exception as e:
+            logger.warning(f"Could not log model to MLflow: {e}")
+        
+        trainer.print_summary()
+        
+        # Log MLflow run info
+        print(f"\n📊 MLflow run ID: {mlflow.active_run().info.run_id}")
+        print(f"📊 MLflow experiment: viral_prediction")
     
     print("\n✅ Multi-task BERT training complete!")
     print(f"\n📦 Model: models/bert_multitask_{timestamp}/")
