@@ -23,6 +23,7 @@ jobs:
           repo_type: space
           directory: app-service
           space_sdk: docker
+          private: false
           hf_token: ${{ secrets.HF_TOKEN }}
 
   # sync-dashboard:
