@@ -16,7 +16,7 @@ jobs:
           lfs: true
 
       - name: Push API to Hugging Face
-        uses: nateraw/huggingface-sync-action@v1.0.3
+        uses: nateraw/huggingface-sync-action@v0.0.5
         with:
           github_repo_id: KajamHamza/cloud
           huggingface_repo_id: helk01/viral-post-predictor
