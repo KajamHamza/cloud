@@ -16,7 +16,7 @@ jobs:
           lfs: true
 
       - name: Push API to Hugging Face
-        uses: nateraw/huggingface-sync-action@v1
+        uses: nateraw/huggingface-sync-action@v1.0.3
         with:
           github_repo_id: KajamHamza/cloud
           huggingface_repo_id: helk01/viral-post-predictor
@@ -25,21 +25,21 @@ jobs:
           space_sdk: docker
           hf_token: ${{ secrets.HF_TOKEN }}
 
-  sync-dashboard:
-    runs-on: ubuntu-latest
-    if: inputs.target == 'dashboard' || github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          lfs: true
-
-      - name: Push Dashboard to Hugging Face
-        uses: nateraw/huggingface-sync-action@v1
-        with:
-          github_repo_id: KajamHamza/cloud
-          huggingface_repo_id: helk01/viral-predictor-dashboard
-          repo_type: space
-          directory: streamlit
-          space_sdk: docker
-          hf_token: ${{ secrets.HF_TOKEN }}
+  # sync-dashboard:
+  #   runs-on: ubuntu-latest
+  #   if: inputs.target == 'dashboard' || github.event_name == 'push'
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         fetch-depth: 0
+  #         lfs: true
+  #
+  #     - name: Push Dashboard to Hugging Face
+  #       uses: nateraw/huggingface-sync-action@v1.0.3
+  #       with:
+  #         github_repo_id: KajamHamza/cloud
+  #         huggingface_repo_id: helk01/viral-predictor-dashboard
+  #         repo_type: space
+  #         directory: streamlit
+  #         space_sdk: docker
+  #         hf_token: ${{ secrets.HF_TOKEN }}
