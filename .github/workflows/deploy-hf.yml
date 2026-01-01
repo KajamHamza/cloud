@@ -2,44 +2,83 @@ name: Sync to Hugging Face
 on:
   push:
     branches: [main]
-  # Allow manual trigger
   workflow_dispatch:
 
 jobs:
   sync-api:
     runs-on: ubuntu-latest
-    if: inputs.target == 'api' || github.event_name == 'push'
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
           lfs: true
 
-      - name: Push API to Hugging Face
-        uses: nateraw/huggingface-sync-action@v0.0.5
-        with:
-          github_repo_id: KajamHamza/cloud
-          huggingface_repo_id: helk01/viral-post-predictor
-          repo_type: space
-          subdirectory: app-service
-          space_sdk: docker
-          hf_token: ${{ secrets.HF_TOKEN }}
+      - name: Push API_SERVICE to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: helk01
+          SPACE_NAME: viral-post-predictor
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+
+          # 1. Clone the Target Space
+          echo "Cloning Space..."
+          git clone https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$SPACE_NAME hf_space
+
+          # 2. Sync Files (Copy app-service/* to hf_space/)
+          # --delete ensures files deleted in GitHub are also deleted in HF
+          # We check if app-service exists first
+          if [ -d "app-service" ]; then
+            echo "Syncing app-service content..."
+            rsync -av --delete --exclude '.git' --exclude '.gitattributes' app-service/ hf_space/
+          else
+            echo "Error: app-service directory not found!"
+            exit 1
+          fi
+
+          # 3. Copy .gitattributes from root (Critical for LFS)
+          cp .gitattributes hf_space/
+
+          # 4. Push Changes
+          cd hf_space
+          # Force LFS install to ensure hooks are active
+          git lfs install
+
+          git add .
+
+          # Commit if changes exist
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Sync from GitHub $GITHUB_SHA"
+            git push
+            echo "✅ Deployed successfully!"
+          else
+            echo "No changes to deploy."
+          fi
 
   # sync-dashboard:
   #   runs-on: ubuntu-latest
-  #   if: inputs.target == 'dashboard' || github.event_name == 'push'
   #   steps:
   #     - uses: actions/checkout@v3
   #       with:
   #         fetch-depth: 0
   #         lfs: true
   #
-  #     - name: Push Dashboard to Hugging Face
-  #       uses: nateraw/huggingface-sync-action@v1.0.3
-  #       with:
-  #         github_repo_id: KajamHamza/cloud
-  #         huggingface_repo_id: helk01/viral-predictor-dashboard
-  #         repo_type: space
-  #         directory: streamlit
-  #         space_sdk: docker
-  #         hf_token: ${{ secrets.HF_TOKEN }}
+  #     - name: Push STREAMLIT to Hugging Face
+  #       env:
+  #         HF_TOKEN: ${{ secrets.HF_TOKEN }}
+  #         HF_USERNAME: helk01
+  #         SPACE_NAME: viral-predictor-dashboard
+  #       run: |
+  #         git config --global user.email "action@github.com"
+  #         git config --global user.name "GitHub Action"
+  #         git clone https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/$SPACE_NAME hf_space
+  #         rsync -av --delete --exclude '.git' --exclude '.gitattributes' streamlit/ hf_space/
+  #         cp .gitattributes hf_space/
+  #         cd hf_space
+  #         git lfs install
+  #         git add .
+  #         if ! git diff-index --quiet HEAD; then
+  #           git commit -m "Sync from GitHub $GITHUB_SHA"
+  #           git push
+  #         fi
