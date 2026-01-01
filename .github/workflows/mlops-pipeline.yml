@@ -50,13 +50,12 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Check latest model metrics
-        run: |
-          az ml model list --resource-group viral-predictor-rg --workspace-name viral-ml-workspace
+      - name: Install Azure ML CLI
+        run: az extension add -n ml -y
 
-      - name: Validate model performance
+      - name: Submit Training Job
         run: |
-          python scripts/validate_model_performance.py
+          az ml job create --file training-job.yml --resource-group viral-predictor-rg --workspace-name viral-ml-workspace --stream
 
   deploy:
     needs: [test, model-validation]
