@@ -198,8 +198,15 @@ def predict():
             
             prediction = torch.argmax(class_logits, dim=1).item()
             viral_prob = torch.softmax(class_logits, dim=1)[0][1].item()
+            
+            # Debug: Log raw regression output
+            logger.info(f"Raw regression output: {reg_output}")
+            logger.info(f"Regression output shape: {reg_output.shape}")
+            
             engagement = torch.expm1(reg_output).item()
+            logger.info(f"After expm1: {engagement}")
             engagement = max(0, int(engagement))
+            logger.info(f"Final engagement: {engagement}")
         
         result = {
             'is_viral': bool(prediction),
