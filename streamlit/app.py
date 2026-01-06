@@ -44,6 +44,27 @@ def fetch_recent_logs():
             conn.close()
     return pd.DataFrame()
 
+def submit_feedback(prediction_id, is_correct):
+    """Update prediction with user feedback"""
+    conn = get_sql_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            query = """
+            UPDATE predictions 
+            SET feedback_correct = ?, feedback_timestamp = GETDATE()
+            WHERE id = ?
+            """
+            cursor.execute(query, (1 if is_correct else 0, prediction_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            st.error(f"Feedback submission failed: {e}")
+            return False
+        finally:
+            conn.close()
+    return False
+
 def check_drift():
     conn = get_sql_connection()
     if conn:
@@ -108,11 +129,43 @@ with tab2:
         with st.spinner("Fetching from Azure SQL..."):
             df = fetch_recent_logs()
             if not df.empty:
-                st.dataframe(df)
-                
                 # Simple timeline
                 fig = px.line(df, x='prediction_timestamp', y='viral_probability', title="Recent Predictions Trend")
                 st.plotly_chart(fig, use_container_width=True)
+                
+                st.subheader("📝 Recent Predictions")
+                
+                # Show predictions with feedback buttons
+                for idx, row in df.head(10).iterrows():
+                    with st.expander(f"📊 Prediction #{row['id']} - {row['prediction_timestamp'].strftime('%Y-%m-%d %H:%M')}"):
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        
+                        with col1:
+                            st.markdown(f"**Text:** {row['input_text'][:200]}...")
+                            st.write(f"**Viral:** {'Yes 🔥' if row['is_viral_prediction'] else 'No'} ({row['viral_probability']:.1%} confidence)")
+                            st.write(f"**Predicted Engagement:** {row['predicted_engagement']:,}")
+                            
+                            # Show feedback status
+                            if pd.notna(row.get('feedback_correct')):
+                                feedback_status = "✅ Correct" if row['feedback_correct'] == 1 else "❌ Incorrect"
+                                st.success(f"Feedback: {feedback_status}")
+                            else:
+                                st.info("⏳ Awaiting feedback")
+                        
+                        with col2:
+                            if st.button("👍 Correct", key=f"correct_{row['id']}"):
+                                if submit_feedback(row['id'], True):
+                                    st.success("Feedback saved!")
+                                    st.rerun()
+                        
+                        with col3:
+                            if st.button("👎 Wrong", key=f"wrong_{row['id']}"):
+                                if submit_feedback(row['id'], False):
+                                    st.success("Feedback saved!")
+                                    st.rerun()
+                
+                # Show full dataframe
+                st.dataframe(df)
             else:
                 st.info("No logs found or connection failed. Check Password.")
 
